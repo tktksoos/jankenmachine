@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>じゃんけんオンライン</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fdf6ec;
+    --ink: #1a1209;
+    --red: #e8331c;
+    --blue: #1c5ce8;
+    --yellow: #f5c842;
+    --green: #1cb85c;
+    --card: #fff8f0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Zen Maru Gothic', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(0,0,0,0.04) 39px, rgba(0,0,0,0.04) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(0,0,0,0.04) 39px, rgba(0,0,0,0.04) 40px);
+  }
+  h1 {
+    font-size: clamp(1.8rem, 5vw, 3rem);
+    font-weight: 900;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  h1 span {
+    display: inline-block;
+    padding: 2px 12px;
+    background: var(--yellow);
+    transform: rotate(-1deg);
+    border: 3px solid var(--ink);
+  }
+
+  .screen { display: none; flex-direction: column; align-items: center; gap: 16px; width: 100%; max-width: 440px; }
+  .screen.active { display: flex; }
+
+  .input-box {
+    width: 100%;
+    padding: 14px 18px;
+    border: 3px solid var(--ink);
+    background: var(--card);
+    font-family: inherit;
+    font-size: 1.1rem;
+    font-weight: 700;
+    box-shadow: 4px 4px 0 var(--ink);
+    outline: none;
+  }
+  .input-box:focus { background: #fffde0; }
+
+  .btn {
+    width: 100%;
+    padding: 14px;
+    border: 3px solid var(--ink);
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 900;
+    font-size: 1.1rem;
+    box-shadow: 5px 5px 0 var(--ink);
+    transition: transform 0.1s, box-shadow 0.1s;
+    background: var(--yellow);
+  }
+  .btn:hover { transform: translate(-2px,-2px); box-shadow: 7px 7px 0 var(--ink); }
+  .btn:active { transform: translate(3px,3px); box-shadow: 2px 2px 0 var(--ink); }
+  .btn.blue { background: #cce0ff; }
+  .btn.red { background: #ffd0cc; }
+  .btn.green { background: #ccffe0; }
+
+  /* SETUP - Firebase config */
+  .config-box {
+    width: 100%;
+    border: 3px solid var(--ink);
+    background: var(--card);
+    padding: 20px;
+    box-shadow: 5px 5px 0 var(--ink);
+  }
+  .config-box h2 { font-size: 1rem; font-weight: 900; margin-bottom: 12px; }
+  .config-box p { font-size: 0.8rem; opacity: 0.6; margin-bottom: 12px; line-height: 1.6; }
+  .config-box .input-box { margin-bottom: 10px; font-size: 0.85rem; padding: 10px 14px; }
+
+  /* WAITING */
+  .waiting-box {
+    border: 3px solid var(--ink);
+    background: var(--card);
+    padding: 32px 40px;
+    text-align: center;
+    box-shadow: 6px 6px 0 var(--ink);
+    width: 100%;
+  }
+  .waiting-box .big { font-size: 3rem; }
+  .waiting-box p { margin-top: 12px; font-weight: 700; opacity: 0.7; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { display: inline-block; animation: spin 1.2s linear infinite; }
+
+  /* GAME */
+  .players-row {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    gap: 12px;
+  }
+  .player-card {
+    flex: 1;
+    border: 3px solid var(--ink);
+    background: var(--card);
+    padding: 12px;
+    text-align: center;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+  .player-card .name { font-weight: 900; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .player-card .hand-emoji { font-size: 2.8rem; min-height: 52px; display: flex; align-items: center; justify-content: center; }
+  .player-card .score { font-size: 1.6rem; font-weight: 900; }
+  .player-card.me { border-color: var(--blue); box-shadow: 4px 4px 0 var(--blue); }
+  .player-card.opp { border-color: var(--red); box-shadow: 4px 4px 0 var(--red); }
+  .vs-badge { font-size: 1.4rem; font-weight: 900; opacity: 0.3; align-self: center; }
+
+  .result-msg {
+    font-size: clamp(1.3rem, 4vw, 1.8rem);
+    font-weight: 900;
+    text-align: center;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .result-msg.win { color: var(--blue); }
+  .result-msg.lose { color: var(--red); }
+
+  .choices {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    width: 100%;
+  }
+  .choice-btn {
+    flex: 1;
+    max-width: 110px;
+    aspect-ratio: 1;
+    border: 3px solid var(--ink);
+    background: var(--card);
+    cursor: pointer;
+    font-size: 2.2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 4px 4px 0 var(--ink);
+    transition: transform 0.1s, box-shadow 0.1s;
+    font-family: inherit;
+  }
+  .choice-btn small { font-size: 0.65rem; font-weight: 700; }
+  .choice-btn:hover:not(:disabled) { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--ink); }
+  .choice-btn:active:not(:disabled) { transform: translate(3px,3px); box-shadow: 1px 1px 0 var(--ink); }
+  .choice-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .choice-btn.gu { background: #fff0f0; }
+  .choice-btn.choki { background: #f0fff0; }
+  .choice-btn.pa { background: #f0f0ff; }
+  .choice-btn.selected { border-width: 4px; transform: translate(-2px,-2px); }
+
+  .status-text { font-weight: 700; opacity: 0.6; font-size: 0.95rem; text-align: center; min-height: 1.4em; }
+  .round-info { font-weight: 900; font-size: 0.9rem; opacity: 0.5; letter-spacing: 0.08em; }
+
+  @keyframes pop { 0% { transform: scale(0.8); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+  .pop { animation: pop 0.35s ease-out; }
+
+  /* FINAL */
+  .final-box {
+    border: 3px solid var(--ink);
+    background: var(--card);
+    padding: 32px 40px;
+    text-align: center;
+    box-shadow: 6px 6px 0 var(--ink);
+    width: 100%;
+  }
+  .final-box .big { font-size: 4rem; }
+  .final-box .title { font-size: 1.6rem; font-weight: 900; margin-top: 12px; }
+  .final-box .sub { margin-top: 8px; opacity: 0.6; font-weight: 700; }
+
+  /* SETUP hint box */
+  .hint {
+    background: #fffde0;
+    border: 2px solid var(--ink);
+    padding: 12px 16px;
+    font-size: 0.8rem;
+    line-height: 1.7;
+    width: 100%;
+  }
+  .hint strong { font-weight: 900; }
+  .hint a { color: var(--blue); }
+</style>
+</head>
+<body>
+
+<h1><span>じゃんけん🖐️</span><br>オンライン</h1>
+
+<!-- SETUP SCREEN: Firebaseの設定入力 -->
+<div class="screen active" id="screen-setup">
+  <div class="hint">
+    <strong>初回のみ：</strong> Firebase設定が必要です。<br>
+    <a href="https://console.firebase.google.com/" target="_blank">Firebase Console</a> でプロジェクトを作り、<br>
+    Realtime Database を有効にして設定値を入力してください。
+  </div>
+  <div class="config-box">
+    <h2>🔧 Firebase 設定</h2>
+    <p>Firebase Console → プロジェクト設定 → マイアプリ → SDK設定から値をコピーしてください</p>
+    <input class="input-box" id="cfg-apiKey" placeholder="apiKey" />
+    <input class="input-box" id="cfg-projectId" placeholder="projectId" />
+    <input class="input-box" id="cfg-dbUrl" placeholder="databaseURL (https://xxx.firebaseio.com)" />
+  </div>
+  <button class="btn" onclick="saveConfig()">✅ 設定を保存して続ける</button>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div class="screen" id="screen-login">
+  <input class="input-box" id="name-input" type="text" placeholder="あなたの名前を入力" maxlength="16" />
+  <button class="btn" onclick="startMatch()">▶ マッチング開始</button>
+  <button class="btn blue" onclick="resetConfig()" style="font-size:0.85rem;padding:10px;">⚙️ Firebase設定を変更</button>
+</div>
+
+<!-- WAITING SCREEN -->
+<div class="screen" id="screen-waiting">
+  <div class="waiting-box">
+    <div class="big"><span class="spinner">⏳</span></div>
+    <p>対戦相手を探しています…</p>
+    <p id="wait-name" style="margin-top:8px;font-size:1.1rem;font-weight:900;"></p>
+  </div>
+  <button class="btn red" onclick="cancelMatch()">キャンセル</button>
+</div>
+
+<!-- GAME SCREEN -->
+<div class="screen" id="screen-game">
+  <div class="round-info" id="round-info">ROUND 1 / 3</div>
+  <div class="players-row">
+    <div class="player-card me">
+      <div class="name" id="my-name">あなた</div>
+      <div class="hand-emoji" id="my-hand">🤜</div>
+      <div class="score" id="my-score">0</div>
+    </div>
+    <div class="vs-badge">VS</div>
+    <div class="player-card opp">
+      <div class="name" id="opp-name">相手</div>
+      <div class="hand-emoji" id="opp-hand">🤛</div>
+      <div class="score" id="opp-score">0</div>
+    </div>
+  </div>
+  <div class="result-msg" id="result-msg">手を選んでください</div>
+  <div class="status-text" id="status-text"></div>
+  <div class="choices">
+    <button class="choice-btn gu" onclick="sendChoice('gu')">✊<small>グー</small></button>
+    <button class="choice-btn choki" onclick="sendChoice('choki')">✌️<small>チョキ</small></button>
+    <button class="choice-btn pa" onclick="sendChoice('pa')">🖐️<small>パー</small></button>
+  </div>
+  <button class="btn red" style="margin-top:8px" onclick="leaveGame()">退出</button>
+</div>
+
+<!-- RESULT SCREEN -->
+<div class="screen" id="screen-result">
+  <div class="final-box" id="final-box">
+    <div class="big" id="final-emoji">🏆</div>
+    <div class="title" id="final-title"></div>
+    <div class="sub" id="final-score"></div>
+  </div>
+  <button class="btn green" onclick="playAgain()">もう一度！</button>
+  <button class="btn blue" onclick="goHome()">トップに戻る</button>
+</div>
+
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {
+  getDatabase, ref, set, get, push, onValue, off, remove, update, serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+
+// ============================================================
+// 定数・状態
+// ============================================================
+const HANDS = { gu: '✊', choki: '✌️', pa: '🖐️' };
+const BEATS = { gu: 'choki', choki: 'pa', pa: 'gu' };
+const MAX_ROUNDS = 3;
+
+let db = null;
+let myId = null;
+let myName = '';
+let myRole = null;       // 'p1' | 'p2'
+let roomId = null;
+let round = 1;
+let myScore = 0, oppScore = 0;
+let chosen = false;
+let listeners = [];      // 登録したFirebaseリスナーを追跡
+
+// ============================================================
+// 画面切り替え
+// ============================================================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ============================================================
+// Firebase設定
+// ============================================================
+window.saveConfig = function() {
+  const apiKey = document.getElementById('cfg-apiKey').value.trim();
+  const projectId = document.getElementById('cfg-projectId').value.trim();
+  const dbUrl = document.getElementById('cfg-dbUrl').value.trim();
+  if (!apiKey || !projectId || !dbUrl) { alert('すべての項目を入力してください'); return; }
+  localStorage.setItem('fb_apiKey', apiKey);
+  localStorage.setItem('fb_projectId', projectId);
+  localStorage.setItem('fb_dbUrl', dbUrl);
+  initFirebase(apiKey, projectId, dbUrl);
+  showScreen('screen-login');
+};
+
+window.resetConfig = function() {
+  localStorage.removeItem('fb_apiKey');
+  localStorage.removeItem('fb_projectId');
+  localStorage.removeItem('fb_dbUrl');
+  showScreen('screen-setup');
+};
+
+function initFirebase(apiKey, projectId, dbUrl) {
+  try {
+    const app = initializeApp({ apiKey, projectId, databaseURL: dbUrl }, 'janken-' + Date.now());
+    db = getDatabase(app);
+    myId = 'p_' + Math.random().toString(36).slice(2, 10);
+  } catch(e) {
+    alert('Firebase初期化エラー: ' + e.message);
+  }
+}
+
+// 保存済み設定があれば自動ロード
+const savedKey = localStorage.getItem('fb_apiKey');
+const savedProject = localStorage.getItem('fb_projectId');
+const savedDb = localStorage.getItem('fb_dbUrl');
+if (savedKey && savedProject && savedDb) {
+  document.getElementById('cfg-apiKey').value = savedKey;
+  document.getElementById('cfg-projectId').value = savedProject;
+  document.getElementById('cfg-dbUrl').value = savedDb;
+  initFirebase(savedKey, savedProject, savedDb);
+  showScreen('screen-login');
+}
+
+// ============================================================
+// マッチング
+// ============================================================
+window.startMatch = function() {
+  myName = document.getElementById('name-input').value.trim();
+  if (!myName) { alert('名前を入力してください'); return; }
+  if (!db) { alert('Firebase設定が必要です'); return; }
+  document.getElementById('wait-name').textContent = myName + ' でマッチング中';
+  showScreen('screen-waiting');
+  findMatch();
+};
+
+window.cancelMatch = function() {
+  cleanupListeners();
+  if (roomId) remove(ref(db, 'rooms/' + roomId));
+  if (myRole === null) {
+    removeFromQueue();
+    remove(ref(db, 'notify/' + myId)).catch(() => {});
+  }
+  roomId = null;
+  showScreen('screen-login');
+};
+
+async function removeFromQueue() {
+  // キューから自分を削除
+  const queueRef = ref(db, 'queue');
+  const snap = await get(queueRef);
+  if (snap.exists()) {
+    snap.forEach(child => {
+      if (child.val().playerId === myId) remove(ref(db, 'queue/' + child.key));
+    });
+  }
+}
+
+async function findMatch() {
+  const queueRef = ref(db, 'queue');
+  const snap = await get(queueRef);
+
+  let waitingEntry = null;
+  if (snap.exists()) {
+    snap.forEach(child => {
+      if (!waitingEntry && child.val().playerId !== myId) {
+        waitingEntry = { key: child.key, ...child.val() };
+      }
+    });
+  }
+
+  if (waitingEntry) {
+    // 相手が待っていた → 自分がp2としてルームを作る
+    await remove(ref(db, 'queue/' + waitingEntry.key));
+    roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    myRole = 'p2';
+    await set(ref(db, 'rooms/' + roomId), {
+      p1: { name: waitingEntry.name, id: waitingEntry.playerId, score: 0 },
+      p2: { name: myName, id: myId, score: 0 },
+      round: 1,
+      status: 'playing',
+      createdAt: serverTimestamp()
+    });
+    // p2はルーム作成後、直接そのルームを監視開始
+    startGame();
+  } else {
+    // キューに自分(p1)を追加して待機
+    myRole = null;
+    const myQueueRef = await push(queueRef, { name: myName, playerId: myId, joinedAt: serverTimestamp() });
+    const myQueueKey = myQueueRef.key;
+
+    // 自分が所属するルームが作られるのをポーリングで確認
+    // onValueでrooms全体を監視するとタイミング問題が起きるため、
+    // 自分専用のルーム通知パスを使う方式に変更
+    const myNotifyRef = ref(db, 'notify/' + myId);
+    const unsubNotify = onValue(myNotifyRef, async (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.val();
+      if (data.roomId) {
+        // 通知を受け取ったら後片付けしてゲーム開始
+        off(myNotifyRef);
+        listeners = listeners.filter(l => l.ref !== myNotifyRef);
+        await remove(ref(db, 'queue/' + myQueueKey)).catch(() => {});
+        await remove(myNotifyRef).catch(() => {});
+        roomId = data.roomId;
+        myRole = 'p1';
+        startGame();
+      }
+    });
+    listeners.push({ r: myNotifyRef, unsubNotify });
+  }
+}
+
+// ============================================================
+// ゲーム
+// ============================================================
+async function startGame() {
+  cleanupListeners();
+
+  // p2がルームを作った場合、p1のIDへ通知を送る
+  if (myRole === 'p2') {
+    const roomSnap = await get(ref(db, 'rooms/' + roomId));
+    const p1Id = roomSnap.val()?.p1?.id;
+    if (p1Id) {
+      await set(ref(db, 'notify/' + p1Id), { roomId });
+    }
+  }
+
+  const roomRef = ref(db, 'rooms/' + roomId);
+  const unsub = onValue(roomRef, (snap) => {
+    if (!snap.exists()) {
+      if (document.getElementById('screen-game').classList.contains('active') ||
+          document.getElementById('screen-waiting').classList.contains('active')) {
+        alert('相手が退出しました');
+        goHome();
+      }
+      return;
+    }
+    handleRoomUpdate(snap.val());
+  });
+  listeners.push({ r: roomRef, unsub });
+}
+
+function cleanupListeners() {
+  listeners.forEach(({ r }) => { try { off(r); } catch {} });
+  listeners = [];
+}
+
+let gameStarted = false;
+let resolvedRounds = new Set(); // 処理済みラウンドを追跡
+let finalShown = false;
+
+function resetGameState() {
+  gameStarted = false;
+  myScore = 0; oppScore = 0;
+  round = 1; chosen = false;
+  resolvedRounds = new Set();
+  finalShown = false;
+}
+
+function handleRoomUpdate(room) {
+  const oppRole = myRole === 'p1' ? 'p2' : 'p1';
+  const opp = room[oppRole];
+  const me = room[myRole];
+  if (!me || !opp) return;
+
+  // ゲーム終了済みなら結果表示のみ
+  if (room.status === 'finished' && room.winner !== undefined && !finalShown) {
+    finalShown = true;
+    setTimeout(() => showFinalResult(room), 500);
+    return;
+  }
+
+  // 初回：ゲーム画面を初期化して表示
+  if (!gameStarted) {
+    gameStarted = true;
+    document.getElementById('my-name').textContent = myName;
+    document.getElementById('opp-name').textContent = opp.name;
+    document.getElementById('my-score').textContent = 0;
+    document.getElementById('opp-score').textContent = 0;
+    document.getElementById('my-hand').textContent = '🤜';
+    document.getElementById('opp-hand').textContent = '🤛';
+    document.getElementById('result-msg').textContent = '手を選んでください';
+    document.getElementById('result-msg').className = 'result-msg';
+    document.getElementById('status-text').textContent = '';
+    updateRoundDisplay();
+    enableChoices();
+    showScreen('screen-game');
+  }
+
+  // 各ラウンドのchoicesを確認（処理済みはスキップ）
+  if (!room.choices) return;
+  Object.entries(room.choices).forEach(([key, choices]) => {
+    const rNum = parseInt(key) + 1; // 0-indexed → 1-indexed
+    if (choices.p1 && choices.p2 && !resolvedRounds.has(rNum)) {
+      resolvedRounds.add(rNum);
+      resolveRound(choices.p1, choices.p2, rNum);
+    } else if (choices[myRole] && !choices[oppRole]) {
+      document.getElementById('status-text').textContent = '相手の選択を待っています…';
+    }
+  });
+}
+
+function resolveRound(h1, h2, rNum) {
+  const myHand = myRole === 'p1' ? h1 : h2;
+  const oppHand = myRole === 'p1' ? h2 : h1;
+
+  document.getElementById('my-hand').textContent = HANDS[myHand];
+  document.getElementById('opp-hand').textContent = HANDS[oppHand];
+  pop('my-hand'); pop('opp-hand');
+  document.getElementById('status-text').textContent = '';
+  disableChoices();
+
+  let roundResult;
+  if (myHand === oppHand) {
+    roundResult = 'draw';
+  } else if (BEATS[myHand] === oppHand) {
+    roundResult = 'win'; myScore++;
+  } else {
+    roundResult = 'lose'; oppScore++;
+  }
+
+  document.getElementById('my-score').textContent = myScore;
+  document.getElementById('opp-score').textContent = oppScore;
+
+  if (roundResult === 'win') {
+    document.getElementById('result-msg').textContent = '🎉 この局はあなたの勝ち！';
+    document.getElementById('result-msg').className = 'result-msg win';
+  } else if (roundResult === 'lose') {
+    document.getElementById('result-msg').textContent = '😢 この局は相手の勝ち…';
+    document.getElementById('result-msg').className = 'result-msg lose';
+  } else {
+    document.getElementById('result-msg').textContent = '🤝 引き分け！';
+    document.getElementById('result-msg').className = 'result-msg';
+  }
+
+  round = rNum + 1;
+  updateRoundDisplay();
+
+  if (rNum < MAX_ROUNDS) {
+    // 次のラウンドへ
+    setTimeout(() => {
+      document.getElementById('result-msg').textContent = '手を選んでください';
+      document.getElementById('result-msg').className = 'result-msg';
+      document.getElementById('my-hand').textContent = '🤜';
+      document.getElementById('opp-hand').textContent = '🤛';
+      document.querySelectorAll('.choice-btn').forEach(b => b.classList.remove('selected'));
+      chosen = false;
+      enableChoices();
+    }, 1800);
+  } else {
+    // 最終ラウンド終了 → p1がDBを更新
+    if (myRole === 'p1') {
+      let winner;
+      if (myScore > oppScore) winner = 'p1';
+      else if (oppScore > myScore) winner = 'p2';
+      else winner = 'draw';
+      update(ref(db, 'rooms/' + roomId), {
+        status: 'finished', winner,
+        finalScore: { p1: myScore, p2: oppScore }
+      });
+    }
+  }
+}
+
+window.sendChoice = function(hand) {
+  if (chosen || !db || !roomId) return;
+  chosen = true;
+  disableChoices();
+  document.querySelectorAll('.choice-btn').forEach(b => b.classList.remove('selected'));
+  const names = ['gu', 'choki', 'pa'];
+  document.querySelectorAll('.choice-btn')[names.indexOf(hand)].classList.add('selected');
+  document.getElementById('my-hand').textContent = HANDS[hand];
+
+  // FirebaseのRound番号 (0-indexed key)
+  const roundKey = (round - 1).toString();
+  update(ref(db, 'rooms/' + roomId + '/choices/' + roundKey), { [myRole]: hand });
+};
+
+function showFinalResult(room) {
+  if (!document.getElementById('screen-game').classList.contains('active')) return;
+  const winner = room.winner;
+  const box = document.getElementById('final-box');
+  const oppRole = myRole === 'p1' ? 'p2' : 'p1';
+  const oppName = room[oppRole]?.name || '相手';
+
+  if (winner === myRole) {
+    document.getElementById('final-emoji').textContent = '🏆';
+    document.getElementById('final-title').textContent = 'あなたの勝ち！';
+    box.style.background = '#ccffdd';
+  } else if (winner === 'draw') {
+    document.getElementById('final-emoji').textContent = '🤝';
+    document.getElementById('final-title').textContent = '引き分け！';
+    box.style.background = '#fffde0';
+  } else {
+    document.getElementById('final-emoji').textContent = '😢';
+    document.getElementById('final-title').textContent = oppName + ' の勝ち…';
+    box.style.background = '#ffd0cc';
+  }
+  document.getElementById('final-score').textContent = myScore + ' - ' + oppScore;
+  showScreen('screen-result');
+  cleanupListeners();
+  // ルームを5秒後に削除
+  setTimeout(() => remove(ref(db, 'rooms/' + roomId)).catch(() => {}), 5000);
+}
+
+window.leaveGame = function() {
+  cleanupListeners();
+  remove(ref(db, 'rooms/' + roomId)).catch(() => {});
+  roomId = null; myRole = null;
+  resetGameState();
+  showScreen('screen-login');
+};
+
+window.playAgain = function() {
+  cleanupListeners();
+  const oldRoomId = roomId;
+  roomId = null; myRole = null;
+  resetGameState();
+  // 古いルームを削除（まだ残っていれば）
+  if (oldRoomId) remove(ref(db, 'rooms/' + oldRoomId)).catch(() => {});
+  document.getElementById('wait-name').textContent = myName + ' でマッチング中';
+  showScreen('screen-waiting');
+  findMatch();
+};
+
+window.goHome = function() {
+  cleanupListeners();
+  if (roomId) remove(ref(db, 'rooms/' + roomId)).catch(() => {});
+  roomId = null; myRole = null;
+  resetGameState();
+  showScreen('screen-login');
+};
+
+// ============================================================
+// UI ユーティリティ
+// ============================================================
+function updateRoundDisplay() {
+  document.getElementById('round-info').textContent = 'ROUND ' + Math.min(round, MAX_ROUNDS) + ' / ' + MAX_ROUNDS;
+}
+function enableChoices() { document.querySelectorAll('.choice-btn').forEach(b => b.disabled = false); }
+function disableChoices() { document.querySelectorAll('.choice-btn').forEach(b => b.disabled = true); }
+function pop(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('pop');
+  void el.offsetWidth;
+  el.classList.add('pop');
+  setTimeout(() => el.classList.remove('pop'), 400);
+}
+
+document.getElementById('name-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') window.startMatch();
+});
+</script>
+</body>
+</html>
